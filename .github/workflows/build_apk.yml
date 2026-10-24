@@ -35,9 +35,9 @@ jobs:
           path: |
             ~/.buildozer
             .buildozer
-          key: ${{ runner.os }}-buildozer-v3-${{ hashFiles('buildozer.spec') }}
+          key: ${{ runner.os }}-buildozer-v4-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            ${{ runner.os }}-buildozer-v3-
+            ${{ runner.os }}-buildozer-v4-
             ${{ runner.os }}-buildozer-
 
       # 4. Install System Dependencies
@@ -72,12 +72,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install "Cython==0.29.33" "buildozer>=1.5.0" virtualenv packaging wheel
 
-      # 6. Build APK with Buildozer (pipe 'yes' to auto-accept Android SDK licenses)
+      # 6. Pre-cache liblzma source and patch recipe to bypass tukaani.org network timeout
+      - name: Pre-cache liblzma
+        run: |
+          mkdir -p .buildozer/android/platform/build-arm64-v8a/packages/liblzma
+          curl -fsSL https://github.com/tukaani-project/xz/releases/download/v5.2.4/xz-5.2.4.tar.gz \
+            -o .buildozer/android/platform/build-arm64-v8a/packages/liblzma/xz-5.2.4.tar.gz
+          if [ ! -d ".buildozer/android/platform/python-for-android" ]; then
+            git clone --depth 1 https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
+          fi
+          sed -i 's|https://tukaani.org/xz/xz-{version}.tar.gz|https://github.com/tukaani-project/xz/releases/download/v{version}/xz-{version}.tar.gz|g' \
+            .buildozer/android/platform/python-for-android/pythonforandroid/recipes/liblzma/__init__.py || true
+
+      # 7. Build APK with Buildozer (pipe 'yes' to auto-accept Android SDK licenses)
       - name: Build APK with Buildozer
         run: |
           yes | buildozer -v android debug
 
-      # 7. Upload APK Artifact
+      # 8. Upload APK Artifact
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
