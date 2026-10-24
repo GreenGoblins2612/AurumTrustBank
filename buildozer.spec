@@ -31,8 +31,11 @@ fullscreen = 0
 # (int) Target Android API, should be as high as possible.
 android.api = 34
 
-# (int) Minimum API your APK will support.
-android.minapi = 21
+# (int) Minimum API your APK will support (numpy requires at least 24).
+android.minapi = 24
+
+# (int) Android NDK API to use.
+android.ndk_api = 24
 
 # (int) Android SDK version to use
 android.sdk = 34
