@@ -72,7 +72,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install "Cython==0.29.33" "buildozer>=1.5.0" virtualenv packaging wheel
 
-      # 6. Pre-cache liblzma source to bypass tukaani.org network timeout
+      # 6. Pre-cache liblzma source from Gentoo CDN mirror
       - name: Pre-cache liblzma
         run: |
           python - << 'EOF'
@@ -82,13 +82,13 @@ jobs:
           os.makedirs(os.path.dirname(target), exist_ok=True)
 
           urls = [
-              "https://web.archive.org/web/20200320000000id_/https://tukaani.org/xz/xz-5.2.4.tar.gz",
-              "https://git.manpage.org/tarballs-software.git/plain/xz-5.2.4.tar.gz",
-              "https://tukaani.org/xz/xz-5.2.4.tar.gz"
+              "https://distfiles.gentoo.org/distfiles/3f/xz-5.2.4.tar.gz",
+              "https://mirror.csclub.uwaterloo.ca/gentoo-distfiles/distfiles/3f/xz-5.2.4.tar.gz",
+              "https://distfiles.adelielinux.org/source/xz/xz-5.2.4.tar.gz"
           ]
 
           downloaded = False
-          headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+          headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
           for url in urls:
               try:
                   print(f"Attempting download from {url}...")
@@ -96,7 +96,7 @@ jobs:
                   with urllib.request.urlopen(req, timeout=30) as resp, open(target, "wb") as f:
                       f.write(resp.read())
                   size = os.path.getsize(target)
-                  if size > 1000000:
+                  if size > 1400000:
                       print(f"Successfully downloaded {target} ({size} bytes)")
                       downloaded = True
                       break
@@ -106,7 +106,8 @@ jobs:
                   print(f"Download failed from {url}: {e}")
 
           if not downloaded:
-              print("Warning: Could not pre-download archive, will rely on p4a download")
+              print("ERROR: Failed to download xz-5.2.4.tar.gz from all mirrors!")
+              sys.exit(1)
 
           p4a_dir = ".buildozer/android/platform/python-for-android"
           if not os.path.exists(p4a_dir):
@@ -116,11 +117,11 @@ jobs:
           if os.path.exists(recipe):
               with open(recipe, "r") as f:
                   content = f.read()
-              mirror = "https://web.archive.org/web/20200320000000id_/https://tukaani.org/xz/xz-{version}.tar.gz"
+              mirror = "https://distfiles.gentoo.org/distfiles/3f/xz-{version}.tar.gz"
               content = content.replace("https://tukaani.org/xz/xz-{version}.tar.gz", mirror)
               with open(recipe, "w") as f:
                   f.write(content)
-              print("Patched liblzma recipe with Wayback Machine mirror.")
+              print("Patched liblzma recipe with Gentoo CDN mirror.")
           EOF
 
       # 7. Build APK with Buildozer (pipe 'yes' to auto-accept Android SDK licenses)
