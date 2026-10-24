@@ -35,9 +35,9 @@ jobs:
           path: |
             ~/.buildozer
             .buildozer
-          key: ${{ runner.os }}-buildozer-v4-${{ hashFiles('buildozer.spec') }}
+          key: ${{ runner.os }}-buildozer-v5-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            ${{ runner.os }}-buildozer-v4-
+            ${{ runner.os }}-buildozer-v5-
             ${{ runner.os }}-buildozer-
 
       # 4. Install System Dependencies
@@ -72,21 +72,56 @@ jobs:
           python -m pip install --upgrade pip
           pip install "Cython==0.29.33" "buildozer>=1.5.0" virtualenv packaging wheel
 
-      # 6. Pre-cache liblzma source and patch recipe to bypass tukaani.org network timeout
+      # 6. Pre-cache liblzma source to bypass tukaani.org network timeout
       - name: Pre-cache liblzma
         run: |
-          mkdir -p .buildozer/android/platform/build-arm64-v8a/packages/liblzma
-          TARGET=".buildozer/android/platform/build-arm64-v8a/packages/liblzma/xz-5.2.4.tar.gz"
-          curl -fL -A "Mozilla/5.0" --retry 3 --connect-timeout 15 \
-            "https://downloads.sourceforge.net/project/lzmautils/xz-5.2.4.tar.gz" -o "$TARGET" || \
-          curl -fL -A "Mozilla/5.0" --retry 3 --connect-timeout 15 \
-            "https://fossies.org/linux/misc/xz-5.2.4.tar.gz" -o "$TARGET"
-          ls -lh "$TARGET"
-          if [ ! -d ".buildozer/android/platform/python-for-android" ]; then
-            git clone --depth 1 https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
-          fi
-          sed -i 's|https://tukaani.org/xz/xz-{version}.tar.gz|https://downloads.sourceforge.net/project/lzmautils/xz-{version}.tar.gz|g' \
-            .buildozer/android/platform/python-for-android/pythonforandroid/recipes/liblzma/__init__.py || true
+          python - << 'EOF'
+          import urllib.request, os, sys
+
+          target = ".buildozer/android/platform/build-arm64-v8a/packages/liblzma/xz-5.2.4.tar.gz"
+          os.makedirs(os.path.dirname(target), exist_ok=True)
+
+          urls = [
+              "https://web.archive.org/web/20200320000000id_/https://tukaani.org/xz/xz-5.2.4.tar.gz",
+              "https://git.manpage.org/tarballs-software.git/plain/xz-5.2.4.tar.gz",
+              "https://tukaani.org/xz/xz-5.2.4.tar.gz"
+          ]
+
+          downloaded = False
+          headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"}
+          for url in urls:
+              try:
+                  print(f"Attempting download from {url}...")
+                  req = urllib.request.Request(url, headers=headers)
+                  with urllib.request.urlopen(req, timeout=30) as resp, open(target, "wb") as f:
+                      f.write(resp.read())
+                  size = os.path.getsize(target)
+                  if size > 1000000:
+                      print(f"Successfully downloaded {target} ({size} bytes)")
+                      downloaded = True
+                      break
+                  else:
+                      print(f"Downloaded file too small ({size} bytes), trying next...")
+              except Exception as e:
+                  print(f"Download failed from {url}: {e}")
+
+          if not downloaded:
+              print("Warning: Could not pre-download archive, will rely on p4a download")
+
+          p4a_dir = ".buildozer/android/platform/python-for-android"
+          if not os.path.exists(p4a_dir):
+              os.system(f"git clone --depth 1 https://github.com/kivy/python-for-android.git {p4a_dir}")
+
+          recipe = os.path.join(p4a_dir, "pythonforandroid/recipes/liblzma/__init__.py")
+          if os.path.exists(recipe):
+              with open(recipe, "r") as f:
+                  content = f.read()
+              mirror = "https://web.archive.org/web/20200320000000id_/https://tukaani.org/xz/xz-{version}.tar.gz"
+              content = content.replace("https://tukaani.org/xz/xz-{version}.tar.gz", mirror)
+              with open(recipe, "w") as f:
+                  f.write(content)
+              print("Patched liblzma recipe with Wayback Machine mirror.")
+          EOF
 
       # 7. Build APK with Buildozer (pipe 'yes' to auto-accept Android SDK licenses)
       - name: Build APK with Buildozer
